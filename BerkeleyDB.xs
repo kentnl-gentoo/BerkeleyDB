@@ -6,7 +6,7 @@
 
  All comments/suggestions/problems are welcome
 
-     Copyright (c) 1997-2013 Paul Marquess. All rights reserved.
+     Copyright (c) 1997-2015 Paul Marquess. All rights reserved.
      This program is free software; you can redistribute it and/or
      modify it under the same terms as Perl itself.
 
@@ -68,7 +68,7 @@ extern "C" {
 #undef __attribute__
 
 #ifdef USE_PERLIO
-#    define GetFILEptr(sv) PerlIO_findFILE(IoIFP(sv_2io(sv)))
+#    define GetFILEptr(sv) PerlIO_exportFILE(IoIFP(sv_2io(sv)), NULL)
 #else
 #    define GetFILEptr(sv) IoIFP(sv_2io(sv))
 #endif
