@@ -14,17 +14,25 @@ hints/solaris.pl
 hints/irix_6_5.pl
 Makefile.PL
 MANIFEST
-mkconsts
+mkconsts.pl
 mkpod
 ppport.h
 README
+t/blob.t
 t/btree.t
 t/cds.t
 t/db-3.0.t
 t/db-3.1.t
 t/db-3.2.t
 t/db-3.3.t
+t/db-4.x.t
+t/db-4.3.t
+t/db-4.4.t
+t/db-4.6.t
+t/db-4.7.t
+t/db-4.8.t
 t/destroy.t
+t/encode.t
 t/encrypt.t
 t/env.t
 t/examples.t
@@ -33,11 +41,13 @@ t/examples3.t
 t/examples3.t.T
 t/filter.t
 t/hash.t
+t/heap.t
 t/join.t
 t/mldbm.t
 t/pod.t
 t/queue.t
 t/recno.t
+t/sequence.t
 t/strict.t
 t/subdb.t
 t/txn.t
@@ -58,5 +68,6 @@ patches/5.005_01
 patches/5.005_02
 patches/5.005_03
 patches/5.6.0
-scan
+scan.pl
 META.yml                                 Module meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)

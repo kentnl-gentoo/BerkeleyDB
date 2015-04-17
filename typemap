@@ -8,9 +8,14 @@
 #
 # 
 
+SVnull*         T_SV_NULL
 void *			T_PV
+db_seq_t 		T_PV_64
 u_int			T_U_INT
 u_int32_t		T_U_INT
+int32_t		    T_U_INT
+db_off_t		T_INT
+db_timeout_t	T_U_INT
 const char * 		T_PV_NULL
 PV_or_NULL		T_PV_NULL
 IO_or_NULL		T_IO_NULL
@@ -21,22 +26,27 @@ BerkeleyDB		T_PTROBJ
 BerkeleyDB::Common	T_PTROBJ_AV
 BerkeleyDB::Hash	T_PTROBJ_AV
 BerkeleyDB::Btree	T_PTROBJ_AV
+BerkeleyDB::Heap	T_PTROBJ_AV
 BerkeleyDB::Recno	T_PTROBJ_AV
 BerkeleyDB::Queue	T_PTROBJ_AV
 BerkeleyDB::Cursor	T_PTROBJ_AV
+BerkeleyDB::DbStream	T_PTROBJ_AV
 BerkeleyDB::TxnMgr	T_PTROBJ_AV
 BerkeleyDB::Txn		T_PTROBJ_AV
 BerkeleyDB::Log		T_PTROBJ_AV
 BerkeleyDB::Lock	T_PTROBJ_AV
 BerkeleyDB::Env		T_PTROBJ_AV
+BerkeleyDB::Sequence		T_PTROBJ_NULL
 
 BerkeleyDB::Raw		T_RAW
 BerkeleyDB::Common::Raw	T_RAW
 BerkeleyDB::Hash::Raw	T_RAW
 BerkeleyDB::Btree::Raw	T_RAW
+BerkeleyDB::Heap::Raw	T_RAW
 BerkeleyDB::Recno::Raw	T_RAW
 BerkeleyDB::Queue::Raw	T_RAW
 BerkeleyDB::Cursor::Raw	T_RAW
+BerkeleyDB::DbStream::Raw	T_RAW
 BerkeleyDB::TxnMgr::Raw	T_RAW
 BerkeleyDB::Txn::Raw	T_RAW
 BerkeleyDB::Log::Raw	T_RAW
@@ -51,9 +61,13 @@ BerkeleyDB::TxnMgr::Inner	T_INNER
 DBT			T_dbtdatum
 DBT_OPT			T_dbtdatum_opt
 DBT_B			T_dbtdatum_btree
+DBT_Blob		T_dbtdatum_blob
 DBTKEY			T_dbtkeydatum
 DBTKEY_B		T_dbtkeydatum_btree
+DBTKEY_B4Blob   T_dbtkeydatum_btree_for_blob
 DBTKEY_Br		T_dbtkeydatum_btree_r
+DBTKEY_Bpr		T_dbtkeydatum_btree_pr
+DBTKEY_seq		T_dbtkeydatum_seq
 DBTYPE			T_U_INT
 DualType		T_DUAL
 BerkeleyDB_type *	T_IV
@@ -61,6 +75,7 @@ BerkeleyDB_ENV_type *	T_IV
 BerkeleyDB_TxnMgr_type * T_IV
 BerkeleyDB_Txn_type *	T_IV
 BerkeleyDB__Cursor_type * T_IV
+BerkeleyDB__DbStream_type * T_IV
 DB *			T_IV
 DB_ENV *		T_IV
 
@@ -79,6 +94,9 @@ T_RAW
 T_U_INT
         $var = SvUV($arg)
 
+T_INT
+        $var = SvIV($arg)
+
 T_SV_REF_NULL
 	if ($arg == &PL_sv_undef)
 	    $var = NULL ;
@@ -88,6 +106,12 @@ T_SV_REF_NULL
         }
         else
             croak(\"$var is not of type ${ntype}\")
+
+T_SV_NULL
+	if ($arg == NULL || $arg == &PL_sv_undef)
+	    $var = NULL ;
+	else
+	    $var = $arg ;
 
 T_HV_REF_NULL
 	if ($arg == &PL_sv_undef)
@@ -133,8 +157,19 @@ T_PV_NULL
 	if ($arg == &PL_sv_undef)
 	    $var = NULL ;
 	else {
-            $var = ($type)SvPV($arg,PL_na) ;
-	    if (PL_na == 0)
+        STRLEN len;
+            $var = ($type)SvPV($arg,len) ;
+	    if (len == 0)
+		$var = NULL ;
+	}
+
+T_PV_64
+	if ($arg == &PL_sv_undef)
+	    $var = 0 ;
+	else {
+        STRLEN len;
+            $var = ($type)SvPV($arg,len) ;
+	    if (len == 0)
 		$var = NULL ;
 	}
 
@@ -175,6 +210,7 @@ T_PTROBJ_AV
             croak(\"$var is not of type ${ntype}\")
 
 T_dbtkeydatum
+	if (! isHeapDb(db))
 	{
 	    SV* my_sv = $arg ;
 	    DBM_ckFilter(my_sv, filter_store_key, \"filter_store_key\");
@@ -186,15 +222,31 @@ T_dbtkeydatum
 	        $var.size = (int)sizeof(db_recno_t);
 	    }
 	    else {
-	        $var.data = SvPV(my_sv, PL_na);
-	        $var.size = (int)PL_na;
+            STRLEN len;
+	        $var.data = SvPV(my_sv, len);
+	        $var.size = (int)len;
 	    }
 	}
+	else
+	{
+            SvGETMAGIC($arg) ;
+                SvUPGRADE($arg, SVt_PV); SvOOK_off($arg); SvPOK_only($arg);
+                /* SvPOK_only($arg); */
+                SvGROW($arg, DB_HEAP_RID_SZ);
+	    DBT_clear($var) ;
+	        $var.data = SvPVX($arg);
+	        $var.size = DB_HEAP_RID_SZ;
+	}
+
+T_dbtkeydatum_seq
+    InputKey_seq($arg, $var)
+
 
 T_dbtkeydatum_btree
 	{
 	    SV* my_sv = $arg ;
-	    DBM_ckFilter(my_sv, filter_store_key, \"filter_store_key\");
+	    if (! isHeapDb(db))
+	        DBM_ckFilter(my_sv, filter_store_key, \"filter_store_key\");
 	    DBT_clear($var) ;
             SvGETMAGIC($arg) ;
 	    if (db->recno_or_queue ||
@@ -204,9 +256,34 @@ T_dbtkeydatum_btree
 	        $var.size = (int)sizeof(db_recno_t);
 	    }
 	    else {
-	        $var.data = SvPV(my_sv, PL_na);
-	        $var.size = (int)PL_na;
+            STRLEN len;
+	        $var.data = SvPV(my_sv, len);
+            $var.size = (int)len;
 	    }
+	}
+
+T_dbtkeydatum_btree_for_blob
+	{
+	    SV* my_sv = $arg ;
+	    if (! isHeapDb(db))
+	        DBM_ckFilter(my_sv, filter_store_key, \"filter_store_key\");
+	    DBT_clear($var) ;
+            SvGETMAGIC($arg) ;
+            STRLEN len;
+	        $var.data = SvPV(my_sv, len);
+            $var.size = (int)len;
+	}
+
+T_dbtdatum_blob
+	{
+	    SV* my_sv = $arg ;
+	    DBT_clear($var) ;
+        SvGETMAGIC($arg) ;
+        STRLEN len;
+        SvUPGRADE($arg, SVt_PV); SvOOK_off($arg); SvPOK_only($arg);
+	    $var.data = SvPVbyte_force(my_sv, len);
+        $var.ulen = (int)len;
+        $var.flags = DB_DBT_APPMALLOC | DB_DBT_USERMEM;
 	}
 
 T_dbtkeydatum_btree_r
@@ -215,26 +292,54 @@ T_dbtkeydatum_btree_r
 	    DBM_ckFilter(my_sv, filter_store_key, \"filter_store_key\");
 	    DBT_clear($var) ;
             SvGETMAGIC($arg) ;
-	    if (db->recno_or_queue ||
+	    if (db->recno_or_queue || 
 		    (db->type == DB_BTREE && flagSet(DB_SET_RECNO))) {
 	        Value = GetRecnoKey(db, SvIV(my_sv)) ; 
 	        $var.data = & Value; 
 	        $var.size = (int)sizeof(db_recno_t);
 	    }
 	    else {
-	        $var.data = SvPV(my_sv, PL_na);
-	        $var.size = (int)PL_na;
+            STRLEN len;
+	        $var.data = SvPV(my_sv, len);
+	        $var.size = (int)len;
 	    }
+	}
+
+T_dbtkeydatum_btree_pr
+	{
+      if(flagSet(DB_GET_BOTH))
+      {
+	    SV* my_sv = $arg ;
+	    DBM_ckFilter(my_sv, filter_store_key, \"filter_store_key\");
+	    DBT_clear($var) ;
+            SvGETMAGIC($arg) ;
+	    if (db->recno_or_queue || 
+		    (db->type == DB_BTREE && flagSet(DB_SET_RECNO))) {
+	        Value = GetRecnoKey(db, SvIV(my_sv)) ; 
+	        $var.data = & Value; 
+	        $var.size = (int)sizeof(db_recno_t);
+	    }
+	    else {
+            STRLEN len;
+	        $var.data = SvPV(my_sv, len);
+	        $var.size = (int)len;
+	    }
+      }
+      else
+      {
+       DBT_clear($var) ;
+      }
 	}
 
 T_dbtdatum
 	{
 	    SV* my_sv = $arg ;
+        STRLEN len;
 	    DBM_ckFilter(my_sv, filter_store_value, \"filter_store_value\");
 	    DBT_clear($var) ;
             SvGETMAGIC($arg) ;
-	    $var.data = SvPV(my_sv, PL_na);
-	    $var.size = (int)PL_na;
+	    $var.data = SvPV(my_sv, len);
+	    $var.size = (int)len;
   	    $var.flags = db->partial ;
     	    $var.dlen  = db->dlen ;
 	    $var.doff  = db->doff ;
@@ -242,12 +347,13 @@ T_dbtdatum
 	
 T_dbtdatum_opt
 	DBT_clear($var) ;
-	if (flagSet(DB_GET_BOTH)) {
+	if (flagSetBoth()) {
 	   SV* my_sv = $arg ;
+       STRLEN len;
 	   DBM_ckFilter(my_sv, filter_store_value, \"filter_store_value\");
            SvGETMAGIC($arg) ;
-	   $var.data = SvPV(my_sv, PL_na);
-	   $var.size = (int)PL_na;
+	   $var.data = SvPV(my_sv, len);
+	   $var.size = (int)len;
   	   $var.flags = db->partial ;
     	   $var.dlen  = db->dlen ;
 	   $var.doff  = db->doff ;
@@ -255,12 +361,13 @@ T_dbtdatum_opt
 	
 T_dbtdatum_btree
 	DBT_clear($var) ;
-	if (flagSet(DB_GET_BOTH)) {
+	if (flagSetBoth()) {
 	    SV* my_sv = $arg ;
+        STRLEN len;
 	    DBM_ckFilter(my_sv, filter_store_value, \"filter_store_value\");
             SvGETMAGIC($arg) ;
-	    $var.data = SvPV(my_sv, PL_na);
-	    $var.size = (int)PL_na;
+	    $var.data = SvPV(my_sv, len);
+	    $var.size = (int)len;
   	    $var.flags = db->partial ;
     	    $var.dlen  = db->dlen ;
 	    $var.doff  = db->doff ;
@@ -268,6 +375,9 @@ T_dbtdatum_btree
 	
 
 OUTPUT
+
+T_SV_NULL
+        $arg = $var;
 
 T_RAW
         sv_setiv($arg, PTR2IV($var));
@@ -290,16 +400,30 @@ T_DUAL
 T_U_INT
         sv_setuv($arg, (UV)$var);
 
+T_INT
+        sv_setiv($arg, (UV)$var);
+
 T_PV_NULL
         sv_setpv((SV*)$arg, $var);
 
+T_PV_64
+        sv_setpvn((SV*)$arg, (char*)&$var, sizeof(db_seq_t));
+
 T_dbtkeydatum_btree
 	OutputKey_B($arg, $var)
+T_dbtkeydatum_btree_for_blob
+	OutputKeyBlob($arg, $var)
 T_dbtkeydatum_btree_r
 	OutputKey_Br($arg, $var)
+T_dbtkeydatum_btree_pr
+	OutputKey_Bpr($arg, $var)
+T_dbtkeydatum_seq
+	OutputKey_seq($arg, $var)
 T_dbtkeydatum
 	OutputKey($arg, $var)
 T_dbtdatum
+	OutputValue($arg, $var)
+T_dbtdatum_blob
 	OutputValue($arg, $var)
 T_dbtdatum_opt
 	OutputValue($arg, $var)

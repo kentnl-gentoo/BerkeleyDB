@@ -7,12 +7,12 @@ use strict ;
 use lib 't' ;
 use BerkeleyDB; 
 use Test::More;
-use util(1) ;
+use util;
 
 plan(skip_all => "Queue needs Berkeley DB 3.3.x or better\n" )
     if $BerkeleyDB::db_version < 3.3;
     
-plan tests => 253;
+plan tests => 260;
 
 
 my $Dfile = "dbhash.tmp";
@@ -59,6 +59,7 @@ umask(0) ;
     # Add a k/v pair
     my $value ;
     my $status ;
+    is $db->Env, undef;
     ok $db->db_put(1, "some value") == 0  ;
     ok $db->status() == 0 ;
     ok $db->db_get(1, $value) == 0 ;
@@ -72,11 +73,11 @@ umask(0) ;
     ok $db->db_del(2) == 0 ;
     ok $db->db_get(2, $value) == DB_KEYEMPTY ;
     ok $db->status() == DB_KEYEMPTY ;
-    ok $db->status() eq $DB_errors{'DB_KEYEMPTY'} ;
+    ok $db->status() =~ $DB_errors{'DB_KEYEMPTY'} ;
 
     ok $db->db_get(7, $value) == DB_NOTFOUND ;
     ok $db->status() == DB_NOTFOUND ;
-    ok $db->status() eq $DB_errors{'DB_NOTFOUND'} ;
+    ok $db->status() =~ $DB_errors{'DB_NOTFOUND'} ;
 
     ok $db->db_sync() == 0 ;
 
@@ -84,7 +85,7 @@ umask(0) ;
     # an existing record.
 
     ok $db->db_put( 1, 'x', DB_NOOVERWRITE) == DB_KEYEXIST ;
-    ok $db->status() eq $DB_errors{'DB_KEYEXIST'} ;
+    ok $db->status() =~ $DB_errors{'DB_KEYEXIST'} ;
     ok $db->status() == DB_KEYEXIST ;
 
 
@@ -113,6 +114,8 @@ umask(0) ;
 				    -Flags    => DB_CREATE,
 				    -Len      => $rec_len;
 
+    isa_ok $db->Env, 'BerkeleyDB::Env';
+                    
     # Add a k/v pair
     my $value ;
     ok $db->db_put(1, "some value") == 0 ;
@@ -167,7 +170,7 @@ umask(0) ;
     }
 
     ok $cursor->status() == DB_NOTFOUND ;
-    ok $cursor->status() eq $DB_errors{'DB_NOTFOUND'} ;
+    ok $cursor->status() =~ $DB_errors{'DB_NOTFOUND'} ;
     ok keys %copy == 0 ;
     ok $extras == 0 ;
 
@@ -184,7 +187,7 @@ umask(0) ;
 	    { ++ $extras }
     }
     ok $status == DB_NOTFOUND ;
-    ok $status eq $DB_errors{'DB_NOTFOUND'} ;
+    ok $status =~ $DB_errors{'DB_NOTFOUND'} ;
     ok $cursor->status() == $status ;
     ok $cursor->status() eq $status ;
     ok keys %copy == 0 ;
@@ -227,7 +230,7 @@ umask(0) ;
 
     $array[1] = 2 ;
     $array[10] = 20 ;
-    $array[1000] = 2000 ;
+    $array[100] = 200 ;
 
     my ($keys, $values) = (0,0);
     $count = 0 ;
@@ -239,8 +242,8 @@ umask(0) ;
 	++ $count ;
     }
     ok $count == 3 ;
-    ok $keys == 1011 ;
-    ok $values == 2022 ;
+    ok $keys == 111 ;
+    ok $values == 222 ;
 
     # unshift isn't allowed
 #    eval {
@@ -279,23 +282,26 @@ umask(0) ;
     $FA ? push @array, "the", "end" 
         : $db->push("the", "end") ;
     ok $cursor->c_get($k, $v, DB_LAST) == 0 ;
-    ok $k == 1002 ;
+    ok $k == 102 ;
     ok $v eq fillout("end", $rec_len) ;
     ok $cursor->c_get($k, $v, DB_PREV) == 0 ;
-    ok $k == 1001 ;
+    ok $k == 101 ;
     ok $v eq fillout("the", $rec_len) ;
     ok $cursor->c_get($k, $v, DB_PREV) == 0 ;
-    ok $k == 1000 ;
-    ok $v == 2000 ;
+    ok $k == 100 ;
+    ok $v == 200 ;
 
     # pop
     ok (( $FA ? pop @array : $db->pop ) eq fillout("end", $rec_len)) ;
     ok (( $FA ? pop @array : $db->pop ) eq fillout("the", $rec_len)) ;
-    ok (( $FA ? pop @array : $db->pop ) == 2000)  ;
+    ok (( $FA ? pop @array : $db->pop ) == 200)  ;
+
+    undef $cursor;
 
     # now clear the array 
     $FA ? @array = () 
         : $db->clear() ;
+    ok $cursor = (tied @array)->db_cursor() ;
     ok $cursor->c_get($k, $v, DB_FIRST) == DB_NOTFOUND ;
 
     undef $cursor ;
@@ -646,9 +652,10 @@ EOM
 
     close FILE ;
 
+    use Test::More;
     BEGIN { push @INC, '.'; }    
     eval 'use SubDB ; ';
-    main::ok $@ eq "" ;
+    ok $@ eq "" ;
     my @h ;
     my $X ;
     my $rec_len = 34 ;
@@ -661,24 +668,24 @@ EOM
 			);		   
 	' ;
 
-    main::ok $@ eq "" ;
+    ok $@ eq "" ;
 
     my $ret = eval '$h[1] = 3 ; return $h[1] ' ;
-    main::ok $@ eq "" ;
-    main::ok $ret == 7 ;
+    ok $@ eq "" ;
+    ok $ret == 7 ;
 
     my $value = 0;
     $ret = eval '$X->db_put(1, 4) ; $X->db_get(1, $value) ; return $value' ;
-    main::ok $@ eq "" ;
-    main::ok $ret == 10 ;
+    ok $@ eq "" ;
+    ok $ret == 10 ;
 
     $ret = eval ' DB_NEXT eq main::DB_NEXT ' ;
-    main::ok $@ eq ""  ;
-    main::ok $ret == 1 ;
+    ok $@ eq ""  ;
+    ok $ret == 1 ;
 
     $ret = eval '$X->A_new_method(1) ' ;
-    main::ok $@ eq "" ;
-    main::ok $ret eq "[[10]]" ;
+    ok $@ eq "" ;
+    ok $ret eq "[[10]]" ;
 
     undef $X ;
     untie @h ;
@@ -782,7 +789,7 @@ EOM
 
     $array[1] = 2 ;
     $array[10] = 20 ;
-    $array[1000] = 2000 ;
+    $array[100] = 200 ;
 
     my ($keys, $values) = (0,0);
     $count = 0 ;
@@ -794,8 +801,8 @@ EOM
 	++ $count ;
     }
     ok $count == 3 ;
-    ok $keys == 1011 ;
-    ok $values == 2022 ;
+    ok $keys == 111 ;
+    ok $values == 222 ;
 
     # unshift isn't allowed
 #    eval {
@@ -834,29 +841,53 @@ EOM
     $FA ? push @array, "the", "end" 
         : $db->push("the", "end") ;
     ok $cursor->c_get($k, $v, DB_LAST) == 0 ;
-    ok $k == 1002 ;
+    ok $k == 102 ;
     ok $v eq fillout("end", $rec_len) ;
     ok $cursor->c_get($k, $v, DB_PREV) == 0 ;
-    ok $k == 1001 ;
+    ok $k == 101 ;
     ok $v eq fillout("the", $rec_len) ;
     ok $cursor->c_get($k, $v, DB_PREV) == 0 ;
-    ok $k == 1000 ;
-    ok $v == 2000 ;
+    ok $k == 100 ;
+    ok $v == 200 ;
 
     # pop
     ok (( $FA ? pop @array : $db->pop ) eq fillout("end", $rec_len)) ;
     ok (( $FA ? pop @array : $db->pop ) eq fillout("the", $rec_len)) ;
-    ok (( $FA ? pop @array : $db->pop ) == 2000 ) ;
+    ok (( $FA ? pop @array : $db->pop ) == 200 ) ;
 
+    undef $cursor ;
     # now clear the array 
     $FA ? @array = () 
         : $db->clear() ;
+    ok $cursor = (tied @array)->db_cursor() ;
     ok $cursor->c_get($k, $v, DB_FIRST) == DB_NOTFOUND ;
     undef $cursor ;
     ok $txn->txn_commit() == 0 ;
 
     undef $db ;
     untie @array ;
+}
+
+{
+    # RT #75691: scalar(@array) returns incorrect value after shift() on tied array
+    my $lex = new LexFile $Dfile ;
+    my @array ;
+    my $db ;
+    $db = tie @array, 'BerkeleyDB::Queue', 
+                        -Flags  => DB_CREATE ,
+				    	-Len       => 2,
+						-Filename => $Dfile ;
+    isa_ok $db, 'BerkeleyDB::Queue';                        
+    $FA ? push @array,  "ab", "cd", "ef", "gh"
+        : $db->push("ab", "cd", "ef", "gh") ;
+    is scalar(@array), 4;
+
+    $FA ? shift @array : $db->shift() ;
+    is scalar(@array), 3;
+
+    undef $db;
+    untie @array ;
+
 }
 __END__
 
